@@ -1,0 +1,5 @@
+#Mighty pass
+
+
+Dependencias:
+- tqdm

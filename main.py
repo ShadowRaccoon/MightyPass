@@ -1,50 +1,67 @@
 import sys
 import os
-import re
+import signal
+import validators
 from threading import Thread
+from threading import Lock
 from typing import List
+from tqdm import tqdm
 
-def getPassword(argv):
+validator_list = list()
+completed_tasks = 0
+pbar = tqdm(total=1, ncols = 75)
+
+def get_password(argv):
     if(len(argv) != 2):
         print("Cantidad de argumentos incorrectos, envie la contraseña")
         sys.exit(os.EX_USAGE)
 
     return argv[1]
 
-def checkBruteForce(password, problems):
-    if(len(password) < 16):
-        problems.append("Tiene pocos carácteres")
+def done_handler(signum, frame):
+    global pbar
+    with Lock():
+        pbar.update(1)
 
-    # Verificar si la contraseña contiene solo letras o solo números
-    if password.isalpha():
-        problems.append("Contiene solo letras")
+def execute_validator(validator, password, problems):
+    
+    #print("La existencia es dolor", validator)
+    validator(password, problems)
+    os.kill(os.getpid(), signal.SIGUSR1)
+    #print("La existencia es dolor 2", validator)
 
-    if(password.isdigit()):
-        problems.append("Contiene solo números")
-
-    # Verificar si la contraseña es una secuencia de números
-    if password.isdigit() and password in "1234567890":
-        problems.append("Contiene secuencia de números")
-
-    # Verificar si la contraseña es una secuencia de letras
-    if password.isalpha() and password.lower() in "abcdefghijklmnopqrstuvwxyz":
-        problems.append("Tiene secuencia de letras")
-
-    # Verificar si la contraseña contiene caracteres especiales
-    if not re.search(r"[ !#$%&'()*+,-./[\\\]^_`{|}~" + r'"]', password):
-        problems.append("No tiene carácteres especiales")
-
+def print_problems(problems):
+    print("Problemas: ")
+    for p in problems:
+        print("\t", p)
 
 def main():
-    password = getPassword(sys.argv)
-    print(password)
+    global validator_list
+    global pbar
+    signal.signal(signal.SIGUSR1, done_handler)
+
+    password = get_password(sys.argv)
     problems = list()
+    
+    validator_list = [validators.check_brute_force, validators.validate_patterns, validators.is_leaked_pass, validators.calculate_entropy]
+    pbar.total = len(validator_list)
+    threads = list()
+    for val in validator_list:
+        threads.append(Thread(target = execute_validator, args = (val, password, problems)))
 
-    thread = Thread(target = checkBruteForce, args = (password, problems))
-    thread.start()
-    thread.join()
-    print(problems)
+    try:
+        # Start all threads
+        for x in threads:
+            x.start()
 
+        # Wait for all of them to finish
+        for x in threads:
+            x.join()
+    except KeyboardInterrupt:
+        pass
+
+    pbar.close()
+    print_problems(problems)
 
     return os.EX_OK
 
