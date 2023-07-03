@@ -88,7 +88,7 @@ def main():
         # Wait for all of them to finish
         for x in threads:
             p.acquire()
-            x.join()
+            x.join(TIMEOUT)
     except KeyboardInterrupt:
         pass
     finally:
