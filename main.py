@@ -1,22 +1,40 @@
 import sys
 import os
 import signal
+import time
 import validators
-from threading import Thread
-from threading import Lock
-from typing import List
+import argparse
+from threading import Thread, Lock, Semaphore
 from tqdm import tqdm
+from typing import List
+from getpass import getpass
 
-validator_list = list()
-completed_tasks = 0
-pbar = tqdm(total=1, ncols = 75)
+TIMEOUT = 180
+OUTPUT_FILE = None
 
-def get_password(argv):
-    if(len(argv) != 2):
-        print("Cantidad de argumentos incorrectos, envie la contraseña")
-        sys.exit(os.EX_USAGE)
+def read_args(argv):
+    parser = argparse.ArgumentParser(description='MightyPass')
+    parser.add_argument('-p', '--password', type=str, help='Pasar contraseña por parametro')
+    parser.add_argument('-o', '--output', type=str, help='Pasar ruta de archivo de output')
+    parser.add_argument('-t', '--timeout', type=int, help='Configura el tiempo límite de ejecución')
 
-    return argv[1]
+    args = parser.parse_args()
+
+    if args.password is None:
+        password = getpass()
+    else:
+        password = args.password
+    
+    if args.output is not None:
+        global OUTPUT_FILE
+        OUTPUT_FILE = args.output
+        #TODO: validate path
+
+    if args.timeout is not None:
+        global TIMEOUT
+        TIMEOUT = args.timeout
+
+    return password
 
 def done_handler(signum, frame):
     global pbar
@@ -24,27 +42,40 @@ def done_handler(signum, frame):
         pbar.update(1)
 
 def execute_validator(validator, password, problems):
-    
-    #print("La existencia es dolor", validator)
+    global p
     validator(password, problems)
     os.kill(os.getpid(), signal.SIGUSR1)
-    #print("La existencia es dolor 2", validator)
+    p.release()
+
 
 def print_problems(problems):
-    print("Problemas: ")
+    global OUTPUT_FILE
+
+    output = "Problemas:"
     for p in problems:
-        print("\t", p)
+        output += "\n\t" + p
+
+    if OUTPUT_FILE is None:
+        print(output)
+    else:
+        f = open(OUTPUT_FILE, "w")
+        f.write(output)
+        f.close()
+
 
 def main():
     global validator_list
     global pbar
+    global p
     signal.signal(signal.SIGUSR1, done_handler)
 
-    password = get_password(sys.argv)
+    password = read_args(sys.argv)
     problems = list()
     
     validator_list = [validators.check_brute_force, validators.validate_patterns, validators.is_leaked_pass, validators.calculate_entropy]
-    pbar.total = len(validator_list)
+    pbar = tqdm(total=len(validator_list), ncols = 75, desc="Procesando...", )
+
+    p = Semaphore(len(validator_list))
     threads = list()
     for val in validator_list:
         threads.append(Thread(target = execute_validator, args = (val, password, problems)))
@@ -56,11 +87,13 @@ def main():
 
         # Wait for all of them to finish
         for x in threads:
+            p.acquire()
             x.join()
     except KeyboardInterrupt:
         pass
+    finally:
+        pbar.close()
 
-    pbar.close()
     print_problems(problems)
 
     return os.EX_OK

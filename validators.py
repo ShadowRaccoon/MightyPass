@@ -1,8 +1,14 @@
+import os
 import re
 import time
 import math
+import signal
+from threading import Thread, Event
+from os.path import abspath
 
+TIME_OUT = 30
 MIN_PASS_LEN = 16
+LEAKED_PASS_DIR = "leaked_passwords/"
 
 def check_brute_force(password, problems):
     if(len(password) < MIN_PASS_LEN):
@@ -29,43 +35,26 @@ def check_brute_force(password, problems):
 
 def validate_patterns(password, problems):
     patterns = [
-        [r'\d{6}', "Sequential digits"],                           # Sequential digits
-        [r'(.)\1+', "Repeated characters"],                        # Repeated characters
-        [r'qwerty|asdf|zxcv|123', "Keyboard patterns"],            # Keyboard patterns
-        [r'(?:password|admin|123456)', "Common dictionary words"], # Common dictionary words
-        [r'[^\w\s]', "Special characters"],                        # Special characters
-        [r'\b(\w+)\s+\1\b', "Repeated words"],                     # Repeated words
-        [r'\b(\w{1,2})\1+\b', "Repeated short words"]              # Repeated short words
+        [r'\d{6}', "Digitos secuenciales"],                           # Sequential digits
+        [r'(.)\1+', "Caracteres repetidos"],                          # Repeated characters
+        [r'qwerty|asdf|zxcv|123', "Patrones de teclado"],             # Keyboard patterns
+        [r'(?:password|contraseña|admin|123456)', "Palabras comunes de diccionario"], # Common dictionary words
+        [r'\b(\w+)\s*\1\b', "Palabras repetidas"],                    # Repeated words
     ]
 
     for pattern in patterns:
         if re.search(pattern[0], password, re.IGNORECASE):
             problems.append(pattern[1])
-    
 
-
-def is_leaked_pass(password, problems):
-    # TODO multiple files
-    # files = [file for file in file.file("leaked_passwords/*.txt")]
-    # leaked = False
-    # for file_name in files:
-    #     with io.open(file_name, 'r') as txt_file:
-    #         while True:
-    #             line = txt_file.readline()
-    #             if not line:
-    #                 break
-                        
-    #             if line.rstrip() == password:
-    #                 leaked = True
-    #                 break
     
-    file1 = open("leaked_passwords/worst_passwords.txt", 'r')
+def search_leaked_pass_in_file(password, problems, filepath, event):
+    file1 = open(filepath, 'r')
     leaked = False
-    
+
     while True:
         line = file1.readline()
 
-        if not line:
+        if not line or event.is_set():
             break
         
         if line.rstrip() == password:
@@ -73,9 +62,25 @@ def is_leaked_pass(password, problems):
             break
 
     if leaked:
-        problems.append("Contraseña vulnerada en ")
+        event.set()
+        problems.append("Contraseña vulnerada")
 
     file1.close()
+
+def is_leaked_pass(password, problems):
+    event = Event()
+    threads = list()
+    for filename in os.listdir(LEAKED_PASS_DIR):
+        if not filename.endswith("txt"):
+            pass
+        threads.append(Thread(target = search_leaked_pass_in_file, args = (password, problems, LEAKED_PASS_DIR + filename, event)))
+
+    for x in threads:
+        x.start()
+
+    found = False
+    for x in threads:
+        x.join(TIME_OUT)
 
 def calculate_entropy(password, problems):
     characters      = set(password)
@@ -86,5 +91,3 @@ def calculate_entropy(password, problems):
     
     if entropy < 60:
         problems.append("La contraseña tiene baja entropía")
-
-
