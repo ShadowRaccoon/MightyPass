@@ -54,9 +54,14 @@ def execute_validator(validator, password, problems):
 def print_problems(problems):
     global OUTPUT_FILE
 
-    output = "Problemas:"
-    for p in problems:
-        output += "\n\t" + p
+    output = ""
+    if len(problems) == 0:
+        output += "Contraseña segura"
+    else:
+        output = "Problemas:"
+        for p in problems:
+            output += "\n\t" + p
+    
 
     if OUTPUT_FILE is None:
         print(output)
