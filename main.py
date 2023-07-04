@@ -12,7 +12,8 @@ from getpass import getpass
 TIMEOUT = 180
 OUTPUT_FILE = None
 
-def read_args(argv):
+def read_args():
+    # Seteamos parseador de argumentos
     parser = argparse.ArgumentParser(description='MightyPass')
     parser.add_argument('-p', '--password', type=str, help='Pasar contraseña por parametro')
     parser.add_argument('-o', '--output', type=str, help='Pasar ruta de archivo de output')
@@ -36,16 +37,18 @@ def read_args(argv):
 
     return password
 
+# Handler de señal de fin del procesamiento de un validador
+# Incrementa el progreso de la progress bar
 def done_handler(signum, frame):
     global pbar
     with Lock():
         pbar.update(1)
 
 def execute_validator(validator, password, problems):
-    global p
+    global sem
     validator(password, problems)
     os.kill(os.getpid(), signal.SIGUSR1)
-    p.release()
+    sem.release()
 
 
 def print_problems(problems):
@@ -66,28 +69,30 @@ def print_problems(problems):
 def main():
     global validator_list
     global pbar
-    global p
+    global sem
+    # Seteamos el handler de las señales
     signal.signal(signal.SIGUSR1, done_handler)
 
-    password = read_args(sys.argv)
+    password = read_args()
     problems = list()
     
+    # Seteamos validaciones a ejecutar
     validator_list = [validators.check_brute_force, validators.validate_patterns, validators.is_leaked_pass, validators.calculate_entropy]
+    # Inicializamos la progress bar
     pbar = tqdm(total=len(validator_list), ncols = 75, desc="Procesando...", )
 
-    p = Semaphore(len(validator_list))
+    # Seteamos semáforo
+    sem = Semaphore(len(validator_list))
     threads = list()
     for val in validator_list:
         threads.append(Thread(target = execute_validator, args = (val, password, problems)))
 
     try:
-        # Start all threads
         for x in threads:
             x.start()
 
-        # Wait for all of them to finish
         for x in threads:
-            p.acquire()
+            sem.acquire()
             x.join(TIMEOUT)
     except KeyboardInterrupt:
         pass
