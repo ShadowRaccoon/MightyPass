@@ -4,7 +4,7 @@ import signal
 import time
 import validators
 import argparse
-from threading import Thread, Lock, Semaphore
+from threading import Thread, Lock, Semaphore, Event
 from tqdm import tqdm
 from typing import List
 from getpass import getpass
@@ -46,8 +46,8 @@ def done_handler(signum, frame):
         tasks_finished+=1
         pbar.update(1)
 
-def execute_validator(validator, password, problems):
-    validator(password, problems)
+def execute_validator(validator, password, problems, event):
+    validator(password, problems, event)
     os.kill(os.getpid(), signal.SIGUSR1)
 
 
@@ -86,10 +86,10 @@ def main():
     validator_list = [validators.check_brute_force, validators.validate_patterns, validators.calculate_entropy, validators.is_leaked_pass]
     # Inicializamos la progress bar
     pbar = tqdm(total=len(validator_list), ncols = 75, desc="Procesando...", )
-
+    event = Event()
     threads = list()
     for val in validator_list:
-        threads.append(Thread(target = execute_validator, args = (val, password, problems)))
+        threads.append(Thread(target = execute_validator, args = (val, password, problems, event)))
 
     try:
         for x in threads:
@@ -101,6 +101,7 @@ def main():
         for x in threads:
             x.join()
     except KeyboardInterrupt:
+        event.set()
         pass
     finally:
         pbar.close()
