@@ -6,7 +6,6 @@ import signal
 from threading import Thread, Event
 from os.path import abspath
 
-TIME_OUT = 30
 MIN_PASS_LEN = 16
 LEAKED_PASS_DIR = "leaked_passwords/"
 
