@@ -54,6 +54,7 @@ def print_problems(problems):
         output = "Problemas:"
         for p in problems:
             output += "\n\t" + p
+        output+="\n"
     
 
     if OUTPUT_FILE is None:
