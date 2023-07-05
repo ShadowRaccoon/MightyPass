@@ -14,11 +14,11 @@ OUTPUT_FILE = None
 
 def read_args():
     # Seteamos parseador de argumentos
-    parser = argparse.ArgumentParser(description='MightyPass')
+    parser = argparse.ArgumentParser(description='MightyPass', add_help=False)
+    parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help='Obtener ayuda sobre este comando y salir')
     parser.add_argument('-p', '--password', type=str, help='Pasar contraseña por parametro')
     parser.add_argument('-o', '--output', type=str, help='Pasar ruta de archivo de output')
-    parser.add_argument('-t', '--timeout', type=int, help='Configura el tiempo límite de ejecución')
-
+    parser.add_argument('-t', '--timeout', type=int, help='Configurar el tiempo límite de ejecución')
     args = parser.parse_args()
 
     if args.password is None:
@@ -41,14 +41,14 @@ def read_args():
 # Incrementa el progreso de la progress bar
 def done_handler(signum, frame):
     global pbar
+    global tasks_finished
     with Lock():
+        tasks_finished+=1
         pbar.update(1)
 
 def execute_validator(validator, password, problems):
-    global sem
     validator(password, problems)
     os.kill(os.getpid(), signal.SIGUSR1)
-    sem.release()
 
 
 def print_problems(problems):
@@ -74,7 +74,8 @@ def print_problems(problems):
 def main():
     global validator_list
     global pbar
-    global sem
+    global tasks_finished
+    tasks_finished = 0
     # Seteamos el handler de las señales
     signal.signal(signal.SIGUSR1, done_handler)
 
@@ -82,12 +83,10 @@ def main():
     problems = list()
     
     # Seteamos validaciones a ejecutar
-    validator_list = [validators.check_brute_force, validators.validate_patterns, validators.is_leaked_pass, validators.calculate_entropy]
+    validator_list = [validators.check_brute_force, validators.validate_patterns, validators.calculate_entropy, validators.is_leaked_pass]
     # Inicializamos la progress bar
     pbar = tqdm(total=len(validator_list), ncols = 75, desc="Procesando...", )
 
-    # Seteamos semáforo
-    sem = Semaphore(len(validator_list))
     threads = list()
     for val in validator_list:
         threads.append(Thread(target = execute_validator, args = (val, password, problems)))
@@ -96,9 +95,11 @@ def main():
         for x in threads:
             x.start()
 
+        while(tasks_finished<len(validator_list)):
+           pbar.update(0)   
+
         for x in threads:
-            sem.acquire()
-            x.join(TIMEOUT)
+            x.join()
     except KeyboardInterrupt:
         pass
     finally:

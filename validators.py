@@ -48,7 +48,7 @@ def validate_patterns(password, problems):
 
     
 def search_leaked_pass_in_file(password, problems, filepath, event):
-    file1 = open(filepath, 'r')
+    file1 = open(filepath, 'r', encoding="ISO-8859-1")
     leaked = False
 
     while True:
