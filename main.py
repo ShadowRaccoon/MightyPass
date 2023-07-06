@@ -60,9 +60,13 @@ def print_problems(problems):
     if OUTPUT_FILE is None:
         print(output)
     else:
-        f = open(OUTPUT_FILE, "w")
-        f.write(output)
-        f.close()
+        try:
+            os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
+            f = open(OUTPUT_FILE, "w")
+            f.write(output)
+            f.close()
+        except OSError as exc:
+            print("Faltan permisos")
 
 
 def main():
